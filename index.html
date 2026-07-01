@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reporte de Baches Ciudadano</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f6f9;
+            color: #333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            font-size: 24px;
+        }
+        .upload-section {
+            border: 2px dashed #3498db;
+            padding: 25px;
+            text-align: center;
+            border-radius: 8px;
+            background: #ecf0f1;
+            cursor: pointer;
+            margin-bottom: 15px;
+            transition: background 0.3s;
+        }
+        .upload-section:hover {
+            background: #e2e8f0;
+        }
+        #fileInput {
+            display: none;
+        }
+        #preview {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 8px;
+            margin-top: 15px;
+            display: none;
+        }
+        .btn-reportar {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            background-color: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-bottom: 15px;
+        }
+        .btn-reportar:hover {
+            background-color: #c0392b;
+        }
+        #map {
+            height: 300px;
+            width: 100%;
+            border-radius: 8px;
+            margin-top: 15px;
+            display: none;
+            border: 1px solid #ccc;
+        }
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 6px;
+            background: #e8f8f5;
+            color: #117a65;
+            font-weight: bold;
+            display: none;
+            text-align: center;
+        }
+        .info-geo {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #555;
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 6px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>⚠️ Reporte de Baches</h1>
+    <p style="text-align: center; color: #7f8c8d;">Toma la foto y envía el reporte usando tu GPS en tiempo real.</p>
+
+    <div class="upload-section" onclick="document.getElementById('fileInput').click()">
+        <span style="font-size: 40px;">📸</span>
+        <p style="margin: 10px 0 0 0; font-weight: bold; color: #3498db;">Toma o selecciona una foto</p>
+        <input type="file" id="fileInput" accept="image/*">
+        <img id="preview" alt="Vista previa del bache">
+    </div>
+
+    <button class="btn-reportar" id="btnReportar">📍 Enviar Reporte con mi Ubicación Actual</button>
+
+    <div id="statusMessage" class="status"></div>
+    <div id="geoInfo" class="info-geo"></div>
+
+    <div id="map"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    const fileInput = document.getElementById('fileInput');
+    const preview = document.getElementById('preview');
+    const btnReportar = document.getElementById('btnReportar');
+    const statusMessage = document.getElementById('statusMessage');
+    const geoInfo = document.getElementById('geoInfo');
+    const mapContainer = document.getElementById('map');
+    
+    let map;
+    let marker;
+    let fotoCargada = false;
+
+    // Manejo de la previsualización de la imagen
+    fileInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            preview.src = event.target.result;
+            preview.style.display = 'block';
+            fotoCargada = true;
+        }
+        reader.readAsDataURL(file);
+    });
+
+    // Evento del botón de reporte (captura GPS en tiempo real)
+    btnReportar.addEventListener('click', function() {
+        if (!fotoCargada) {
+            alert("Por favor, toma o selecciona primero una foto del bache.");
+            return;
+        }
+
+        statusMessage.style.display = 'block';
+        statusMessage.style.backgroundColor = "#eaf2f8";
+        statusMessage.style.color = "#2980b9";
+        statusMessage.innerText = "Obteniendo ubicación de alta precisión por GPS...";
+
+        // Configuración clave para tiempo real y máxima precisión
+        const geoOptions = {
+            enableHighAccuracy: true, // Fuerza el uso de GPS si está disponible
+            timeout: 10000,           // Espera máxima de 10 segundos
+            maximumAge: 0             // No usar ubicaciones guardadas en caché
+        };
+
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    mostrarEnMapa(lat, lng, false);
+                },
+                (error) => {
+                    console.error("Error de Geolocalización:", error);
+                    // Si falla el GPS, se usa la ubicación por defecto (Lima, Perú)
+                    mostrarEnMapa(-12.046374, -77.042793, true);
+                }, 
+                geoOptions
+            );
+        } else {
+            mostrarEnMapa(-12.046374, -77.042793, true);
+        }
+    });
+
+    function mostrarEnMapa(lat, lng, esSimulado = false) {
+        statusMessage.style.display = 'block';
+        statusMessage.innerText = esSimulado ? "Reportado (Ubicación por defecto)" : "¡Bache reportado con éxito en tiempo real!";
+        statusMessage.style.backgroundColor = esSimulado ? "#fdf2e9" : "#e8f8f5";
+        statusMessage.style.color = esSimulado ? "#d35400" : "#117a65";
+
+        geoInfo.style.display = 'block';
+        geoInfo.innerHTML = `
+            <strong>Ubicación del reporte:</strong><br>
+            📍 Latitud: ${lat.toFixed(6)}<br>
+            📍 Longitud: ${lng.toFixed(6)} 
+            ${esSimulado ? '<br><span style="color: #e67e22; font-size: 12px;">⚠️ No se pudo acceder al GPS en tiempo real.</span>' : ''}
+        `;
+
+        mapContainer.style.display = 'block';
+
+        if (!map) {
+            map = L.map('map').setView([lat, lng], 17);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap'
+            }).addTo(map);
+            marker = L.marker([lat, lng]).addTo(map)
+                .bindPopup('<b>Bache reportado aquí</b>')
+                .openPopup();
+        } else {
+            map.setView([lat, lng], 17);
+            marker.setLatLng([lat, lng]);
+        }
+        
+        setTimeout(() => { map.invalidateSize(); }, 200);
+    }
+</script>
+
+</body>
+</html>
